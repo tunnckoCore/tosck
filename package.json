@@ -1,6 +1,6 @@
 {
   "name": "tosck",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Asynchronous page request - simple and configurable. Follow redirects and decompress gzip/deflate request bodies on-the-fly.",
   "scripts": {
     "lint": "jshint index.js && jscs index.js --reporter inline",
