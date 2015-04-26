@@ -7,6 +7,7 @@
 
 'use strict';
 
+var qs = require('querystring');
 var url = require('url');
 var zlib = require('zlib');
 var http = require('http');
@@ -20,6 +21,8 @@ var lowercase = require('lowercase-keys');
 
 module.exports = tosck;
 
+var redirects = 0;
+
 function tosck(address, opts, callback) {
   if (kindOf(address) !== 'string') {
     throw new TypeError('[tosck] expect `address` be string');
@@ -29,10 +32,9 @@ function tosck(address, opts, callback) {
     opts = {};
   }
   if (kindOf(callback) !== 'function') {
-    throw new TypeError('[tosck] expect `callback` be funsction');
+    throw new TypeError('[tosck] expect `callback` be function');
   }
 
-  var redirects = 0;
   var maxRedirects = kindOf(opts.maxRedirects) === 'number';
   var followRedirects = kindOf(opts.followRedirects) === 'boolean';
 
@@ -52,12 +54,21 @@ function tosck(address, opts, callback) {
   var parsedUrl = url.parse(prependHttp(address));
   var fn = parsedUrl.protocol === 'https:' ? https : http;
 
-  opts = lowercase(opts);
   opts = extend(parsedUrl, opts);
+
+  if (opts.query) {
+    var query = opts.query;
+    opts.path = (opts.path ? opts.path.split('?')[0] : '') + '?';
+    query = typeof query === 'string' ? query : qs.stringify(query);
+    opts.path = opts.path + query;
+  }
+
 
   var req = fn.request(opts, function(response) {
     var res = response;
-    var contentEncoding = res.headers['content-encoding'];
+    var code = response.statusCode;
+    var contentEncoding = response.headers['content-encoding'];
+
 
     // decompress
     if (['gzip', 'deflate'].indexOf(contentEncoding) !== -1) {
@@ -65,22 +76,28 @@ function tosck(address, opts, callback) {
     }
 
     // redirects
-    var isRedirect = statuses.redirect[response.statusCode];
-    var location = response.headers.location;
-    if (opts.followRedirects && isRedirect && location) {
+    var isRedirect = statuses.redirect[code];
+    if (opts.followRedirects && isRedirect && response.headers.location) {
       response.resume(); // Discard response
 
       if (redirects++ > opts.maxRedirects) {
-        var msg = 'Redirected ' + redirects + ' times. Aborting.';
+        var msg = 'Redirected ' + redirects;
+        msg = msg + ' times, ' + opts.maxRedirects;
+        msg = msg + ' allowed. Aborting.';
         callback(new Error(msg), undefined, response);
         return;
       }
-
-      tosck(url.resolve(address, location), opts, callback);
+      tosck(url.resolve(address, response.headers.location), opts, callback);
       return;
     }
 
     readAllStream(res, opts.encoding, function(err, data) {
+      if (code < 200 || code > 299) {
+        var msg = address + ' response code is ' + code + ' (' + statuses[code] + ')';
+        err = err || new Error(msg);
+        err.message = msg;
+        err.code = code;
+      }
       if (opts.json === true) {
         tryJson(data, callback, response);
         return;
@@ -90,7 +107,7 @@ function tosck(address, opts, callback) {
   });
   req.once('error', function (err) {
     callback(err);
-  })
+  });
   req.end();
 };
 
