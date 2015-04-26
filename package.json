@@ -17,7 +17,27 @@
     "type": "git",
     "url": "git://github.com/tunnckoCore/tosck.git"
   },
-  "keywords": [],
+  "keywords": [
+    "async",
+    "compress",
+    "confurable",
+    "curl",
+    "decompress",
+    "deflate",
+    "fetch",
+    "follow",
+    "get",
+    "got",
+    "gzip",
+    "http",
+    "https",
+    "minimal",
+    "redirects",
+    "request",
+    "simple",
+    "url",
+    "utils"
+  ],
   "license": {
     "type": "MIT",
     "url": "https://github.com/tunnckoCore/tosck/blob/master/license.md"
