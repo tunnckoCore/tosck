@@ -29,6 +29,7 @@ var SSL_caRootCert = null;
 // gzip stuff
 var testGzipContent = 'Compressible response content.';
 
+// http server routes
 httpServer.on('/', function(req, res) {
   res.statusCode = 404;
   res.end('not');
@@ -260,7 +261,6 @@ describe('tosck', function() {
   });
   it('cleanup SSL server', function(done) {
     SSL_Server.close();
-    var url = require('url');
     done();
   });
 });
