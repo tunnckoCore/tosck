@@ -1,0 +1,43 @@
+{
+  "name": "tosck",
+  "version": "0.2.0",
+  "description": "Just asynchronous HTTP(S) requests.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tunnckoCore/tosck.git"
+  },
+  "keywords": [
+    "jshttp",
+    "http",
+    "https",
+    "get",
+    "post",
+    "request",
+    "utils",
+    "ssl",
+    "gzip",
+    "decode",
+    "decompress"
+  ],
+  "author": "Charlike Mike Reagent <mameto_100@mail.bg> (http://j.mp/1stW47C)",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/tunnckoCore/tosck/issues"
+  },
+  "homepage": "https://github.com/tunnckoCore/tosck",
+  "dependencies": {
+    "autoinstall": "^0.3.1",
+    "extend-shallow": "^1.1.2",
+    "handle-arguments": "^2.0.0",
+    "http-errors": "^1.3.1",
+    "kind-of": "^1.1.0",
+    "lowercase-keys": "^1.0.0",
+    "object.omit": "^1.1.0",
+    "prepend-http": "^1.0.1",
+    "qs": "^2.4.1"
+  }
+}
