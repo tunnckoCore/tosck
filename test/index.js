@@ -12,6 +12,7 @@ var zlib = require('zlib');
 var test = require('assertit');
 var tosck = require('../index');
 var server = require('./server.js');
+var from2Array = require('from2-array');
 var httpServer = server.createHttpServer();
 
 // assertit like mocha
@@ -36,6 +37,28 @@ httpServer.on('/', function(req, res) {
 });
 httpServer.on('/test', function(req, res) {
   res.end(req.url);
+});
+httpServer.on('/json/ok', function(req, res) {
+  res.end('{"cat":"meow"}');
+});
+httpServer.on('/json/500', function(req, res) {
+  res.statusCode = 500;
+  res.end('{"json":"cat"}');
+});
+httpServer.on('/json/invalid', function(req, res) {
+  res.end('/1"2"3/');
+});
+httpServer.on('/json/invalid/500', function(req, res) {
+  res.statusCode = 500;
+  res.end('invalid non 200');
+});
+httpServer.on('/method', function (req, res) {
+  res.setHeader('method', req.method);
+  res.end();
+});
+httpServer.on('/post/body', function (req, res) {
+  res.setHeader('method', req.method);
+  req.pipe(res);
 });
 httpServer.on('/empty', function(req, res) {
   res.end();
@@ -62,6 +85,31 @@ httpServer.on('/corrupted', function(req, res) {
   res.setHeader('Content-Type', 'text/plain');
   res.setHeader('Content-Encoding', 'gzip');
   res.end('Not gzipped content');
+});
+httpServer.on('/finite', function(req, res) {
+  res.statusCode = 302;
+  res.setHeader('Location', httpServer.url + '/reached');
+  res.end();
+});
+httpServer.on('/endless', function(req, res) {
+  res.statusCode = 301;
+  res.setHeader('Location', httpServer.url + '/endless');
+  res.end();
+});
+httpServer.on('/relative', function(req, res) {
+  res.statusCode = 301;
+  res.setHeader('Location', '/reached');
+  res.end();
+});
+httpServer.on('/relativeQuery?bang', function(req, res) {
+  res.statusCode = 301;
+  res.setHeader('Location', '/reached');
+  res.end();
+});
+httpServer.on('/reached', function(req, res) {
+  res.statusCode = 200;
+  res.setHeader('X-Charlike', 'tunnckoCore');
+  res.end('reached');
 });
 
 // tests
@@ -252,6 +300,119 @@ describe('tosck', function() {
     }, function(err, data) {
       assert.strictEqual(err, null);
       assert.strictEqual(data, 'https ok');
+      done();
+    });
+  });
+  it('should parse json response when json option is true', function(done) {
+    tosck(httpServer.url + '/json/ok', {json: true}, function(err, json, res) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(res.statusCode, 200);
+      assert.deepEqual(json, {cat: 'meow'});
+      done();
+    });
+  });
+  it('should parse non-200 json responses and pass error', function(done) {
+    tosck(httpServer.url + '/json/500', {json: true}, function(err, json, res) {
+      assert.ok(err !== null);
+      assert.strictEqual(err.code, 500);
+      assert.strictEqual(res.statusCode, 500);
+      assert.deepEqual(json, {json: 'cat'});
+      done();
+    });
+  });
+  it('should catch parsing json errors on 200 responses', function(done) {
+    tosck(httpServer.url + '/json/invalid', {json: true}, function(err, data, res) {
+      assert.ok(err !== null);
+      assert.strictEqual(res.statusCode, 200);
+      assert.strictEqual(/Unexpected token \//.test(err.message), true);
+      assert.strictEqual(data, '/1"2"3/');
+      done();
+    });
+  });
+  it('should catch parsing json errors on non-200 responses', function(done) {
+    tosck(httpServer.url + '/json/invalid/500', {json: true}, function(err, data, res) {
+      assert.ok(err !== null);
+      assert.strictEqual(res.statusCode, 500);
+      assert.strictEqual(/Unexpected token i/.test(err.message), true);
+      assert.strictEqual(data, 'invalid non 200');
+      done();
+    });
+  });
+  it('GET requests can have body', function(done) {
+    tosck(httpServer.url + '/method', {
+      method: 'get',
+      body: 'dancing parrot'
+    }, function(err, data, res) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, '');
+      assert.strictEqual(res.headers.method, 'GET');
+      done();
+    });
+  });
+  it('POST request when options.body is string automagically', function(done) {
+    tosck(httpServer.url + '/post/body', {body: 'wow'}, function(err, data, res) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, 'wow');
+      assert.strictEqual(res.headers.method, 'POST');
+      done();
+    });
+  });
+  it('POST request when options.body is Buffer', function(done) {
+    tosck(httpServer.url + '/post/body', {body: new Buffer('wow')}, function(err, data) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, 'wow');
+      done();
+    });
+  });
+  it('should throw TypeError when no String or Buffer POST opts.body given', function(done) {
+    function fixture() {
+      var opts = {body: from2Array(['cat', 'meow'])};
+      var noop = function _noop() {};
+      tosck(httpServer.url + '/post/body', opts, noop);
+    }
+    assert.throws(fixture, TypeError);
+    assert.throws(fixture, /opts\.body can be only Buffer or String/);
+    done();
+  });
+  it('works with non empty body sent and empty post response', function(done) {
+    tosck(httpServer.url + '/empty', {body: 'wow'}, function(err, data) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, '');
+      done();
+    });
+  });
+  it('follows redirect', function(done) {
+    tosck(httpServer.url + '/finite', {followRedirects: true}, function(err, data, res) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, 'reached');
+      assert.strictEqual(res.headers['x-charlike'], 'tunnckoCore');
+      assert.strictEqual(res.statusCode, 200);
+      done();
+    });
+  });
+  it('follows relative redirect', function(done) {
+    tosck(httpServer.url + '/relative', {followRedirects: true}, function(err, data, res) {
+      assert.strictEqual(err, null);
+      assert.strictEqual(data, 'reached');
+      assert.strictEqual(res.headers['x-charlike'], 'tunnckoCore');
+      assert.strictEqual(res.statusCode, 200);
+      done();
+    });
+  });
+  it('errors on endless redirect default max redirects 10', function(done) {
+    tosck(httpServer.url + '/endless', {followRedirects: true}, function(err) {
+      assert.ok(err !== null, 'should get error');
+      assert.strictEqual(/Redirected 10 times/.test(err.message), true);
+      done();
+    });
+  });
+  it('errors on endless redirect when maxRedirects: 5', function(done) {
+    tosck(httpServer.url + '/endless', {
+      followRedirects: true,
+      maxRedirects: 5
+    }, function(err) {
+      assert.ok(err !== null, 'should get error');
+      assert.strictEqual(/Redirected 5 times/.test(err.message), true);
       done();
     });
   });

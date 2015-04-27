@@ -17,11 +17,11 @@ var kindOf = require('kind-of');
 var statuses = require('statuses');
 var prependHttp = require('prepend-http');
 var readAllStream = require('read-all-stream');
+var objectAssign = require('object-assign');
 var lowercase = require('lowercase-keys');
+var redirects = 0;
 
 module.exports = tosck;
-
-var redirects = 0;
 
 function tosck(address, opts, callback) {
   if (kindOf(address) !== 'string') {
@@ -39,6 +39,11 @@ function tosck(address, opts, callback) {
   var followRedirects = kindOf(opts.followRedirects) === 'boolean';
 
   opts = kindOf(opts) === 'object' ? opts : {};
+
+  if (opts.body && !(kindOf(opts.body) === 'string' || kindOf(opts.body) === 'buffer')) {
+    throw new TypeError('[tosck] opts.body can be only Buffer or String');
+  }
+
   opts.maxRedirects = maxRedirects ? opts.maxRedirects : 10;
   opts.followRedirects = followRedirects ? opts.followRedirects : false;
 
@@ -50,25 +55,29 @@ function tosck(address, opts, callback) {
   if (opts.body) {
     opts.method = kindOf(opts.method) === 'string' ? opts.method : 'post';
   }
+  opts.method = opts.method ? opts.method.toUpperCase() : undefined;
 
+  request(address, opts, callback)
+};
+
+function request(address, opts, callback) {
   var parsedUrl = url.parse(prependHttp(address));
   var fn = parsedUrl.protocol === 'https:' ? https : http;
 
-  opts = extend(parsedUrl, opts);
+  var options = extend({}, parsedUrl, opts);
 
-  if (opts.query) {
-    var query = opts.query;
-    opts.path = (opts.path ? opts.path.split('?')[0] : '') + '?';
+  if (options.query) {
+    var query = options.query;
+    options.path = (options.path ? options.path.split('?')[0] : '') + '?';
     query = typeof query === 'string' ? query : qs.stringify(query);
-    opts.path = opts.path + query;
+    options.path = options.path + query;
   }
 
 
-  var req = fn.request(opts, function(response) {
+  var req = fn.request(options, function(response) {
     var res = response;
     var code = response.statusCode;
     var contentEncoding = response.headers['content-encoding'];
-
 
     // decompress
     if (['gzip', 'deflate'].indexOf(contentEncoding) !== -1) {
@@ -77,17 +86,17 @@ function tosck(address, opts, callback) {
 
     // redirects
     var isRedirect = statuses.redirect[code];
-    if (opts.followRedirects && isRedirect && response.headers.location) {
+    var location = response.headers.location;
+    if (isRedirect && opts.followRedirects && location) {
       response.resume(); // Discard response
 
-      if (redirects++ > opts.maxRedirects) {
-        var msg = 'Redirected ' + redirects;
-        msg = msg + ' times, ' + opts.maxRedirects;
-        msg = msg + ' allowed. Aborting.';
+      if (++redirects > opts.maxRedirects) {
+        var msg = 'Redirected ' + opts.maxRedirects + ' times. Aborting.';
         callback(new Error(msg), undefined, response);
         return;
       }
-      tosck(url.resolve(address, response.headers.location), opts, callback);
+
+      request(url.resolve(address, location), opts, callback);
       return;
     }
 
@@ -99,24 +108,27 @@ function tosck(address, opts, callback) {
         err.code = code;
       }
       if (opts.json === true) {
-        tryJson(data, callback, response);
+        tryJson(err, data, response, callback);
         return;
       }
       callback(err, data, response);
     });
   });
-  req.once('error', function (err) {
+  req.once('error', function(err) {
     callback(err);
   });
+  if (opts.body) {
+    req.end(opts.body, opts.encoding);
+    return;
+  }
   req.end();
-};
+}
 
-function tryJson(data, callback, response) {
-  var isError = null;
+function tryJson(err, data, res, cb) {
   try {
     data = JSON.parse(data);
-  } catch(err) {
-    isError = err;
+  } catch(e) {
+    err = e;
   }
-  callback(isError, data, response);
+  cb(err, data, res);
 }
